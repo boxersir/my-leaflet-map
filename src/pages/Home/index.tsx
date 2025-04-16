@@ -1,4 +1,5 @@
-import React,{useState,useRef,useEffect ,useMemo,useCallback  } from 'react';
+ 
+import React,{useState,useRef,useEffect ,useMemo,useCallback } from 'react';
 import {
   MapContainer,
   TileLayer,
@@ -7,9 +8,11 @@ import {
   Tooltip,
   useMapEvents,
   useMapEvent,
+  useMap,
   Pane,
-  Rectangle
+  Rectangle,
 } from 'react-leaflet';
+import {useLeafletContext,useEventHandlers} from '@react-leaflet/core'
 import L from "leaflet";
 import Guide from '@/components/Guide';
 import { trim } from '@/utils/format';
@@ -78,6 +81,7 @@ const center = {
   lat: 51.505,
   lng: -0.09,
 }
+const zoom = 13
 const DraggableMarker =()=> {
   const [draggable, setDraggable] = useState(true)
   const [position, setPosition] = useState(center)
@@ -122,8 +126,111 @@ const DraggableMarker =()=> {
   )
 }
 
+// 3.1 minimap bounds
+const POSITION_CLASSES = {
+  bottomleft: 'leaflet-bottom leaflet-left',
+  bottomright: 'leaflet-bottom leaflet-right',
+  topleft: 'leaflet-top leaflet-left',
+  topright: 'leaflet-top leaflet-right',
+}
+
+const BOUNDS_STYLE = { weight: 1 }
+
+function MinimapBounds({ parentMap, zoom }) {
+  const minimap = useMap()
+
+  // Clicking a point on the minimap sets the parent's map center
+  const onClick = useCallback(
+    (e) => {
+      parentMap.setView(e.latlng, parentMap.getZoom())
+    },
+    [parentMap],
+  )
+  useMapEvent('click', onClick)
+
+  // Keep track of bounds in state to trigger renders
+  const [bounds, setBounds] = useState(parentMap.getBounds())
+  const onChange = useCallback(() => {
+    setBounds(parentMap.getBounds())
+    // Update the minimap's view to match the parent map's center and zoom
+    minimap.setView(parentMap.getCenter(), zoom)
+  }, [minimap, parentMap, zoom])
+  // const context = useLeafletContext();
+  // // Listen to events on the parent map
+  const handlers = useMemo(() => ({ move: onChange, zoom: onChange }), [])
+  useEventHandlers({ instance: parentMap }, handlers)
+
+  return <Rectangle bounds={bounds} pathOptions={BOUNDS_STYLE} />
+}
+function MinimapControl({ position, zoom }) {
+  const parentMap = useMap()
+  const mapZoom = zoom || 0
+
+  // Memoize the minimap so it's not affected by position changes
+  const minimap = useMemo(
+    () => (
+      <MapContainer
+        style={{ height: 80, width: 80 }}
+        center={parentMap.getCenter()}
+        zoom={mapZoom}
+        dragging={false}
+        doubleClickZoom={false}
+        scrollWheelZoom={false}
+        attributionControl={false}
+        zoomControl={false}>
+        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+        <MinimapBounds parentMap={parentMap} zoom={mapZoom} />
+      </MapContainer>
+    ),
+    [],
+  )
+
+  const positionClass =
+    (position && POSITION_CLASSES[position]) || POSITION_CLASSES.topright
+  return (
+    <div className={positionClass}>
+      <div className="leaflet-control leaflet-bar">{minimap}</div>
+    </div>
+  )
+}
+// reset 定位
+function DisplayPosition({ map }) {
+  const [position, setPosition] = useState(() => map.getCenter())
+
+  const onClick = useCallback(() => {
+    map.setView(center, zoom)
+  }, [map])
+
+  const onMove = useCallback(() => {
+    setPosition(map.getCenter())
+  }, [map])
+
+  useEffect(() => {
+    map.on('move', onMove)
+    return () => {
+      map.off('move', onMove)
+    }
+  }, [map, onMove])
+
+  return (
+    <p style={{position: 'absolute', top: 10, left: 10, zIndex: 1000}}>
+      latitude: {position.lat.toFixed(4)}, longitude: {position.lng.toFixed(4)}{' '}
+      <button onClick={onClick}>reset</button>
+    </p>
+  )
+}
+// placeholder
+function MapPlaceholder() {
+  return (
+    <p>
+      Map of London.{' '}
+      <noscript>You need to enable JavaScript to see this map.</noscript>
+    </p>
+  )
+}
 const HomePage: React.FC = () => {
   const { name } = useModel('global');
+  const [map, setMap] = useState(null)
   const animateRef = useRef(false) // animate panning
    // 动态规划
    const SetViewOnClick =({ animateRef })=> {
@@ -139,7 +246,13 @@ const HomePage: React.FC = () => {
     <PageContainer ghost>
       <div className={styles.container}>
         <Guide name={trim(name)} />
-        <MapContainer center={[52.6376, -1.135171]} zoom={7} style={{ height: '100vh' }}>
+        <MapContainer
+          center={[52.6376, -1.135171]}
+          zoom={7}
+          style={{ height: '100vh' }}
+          ref={setMap}
+          placeholder={<MapPlaceholder />}
+        >
                 <TileLayer
                   url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                   attribution='&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
@@ -163,6 +276,8 @@ const HomePage: React.FC = () => {
           </Pane> */}
           <DraggableMarker />
           <SetViewOnClick animateRef={animateRef} />
+          <MinimapControl position="topright" />
+          {map?<DisplayPosition map={map} />:null}
             </MapContainer>
       </div>
     </PageContainer>
