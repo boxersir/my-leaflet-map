@@ -1,3 +1,25 @@
 .container {
   padding-top: 80px;
 }
+.locatedAnimation {
+  width: 17px;
+  height: 17px;
+  border: 1px solid #fff;
+  border-radius: 50%;
+  background: #2a93ee;
+  animation: borderPulse 2s infinite;
+}
+
+@keyframes borderPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 255, 255, 1);
+  }
+
+  70% {
+    box-shadow: 0 0 0 10px rgba(255, 0, 0, 0);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 0, 0, 0);
+  }
+}
